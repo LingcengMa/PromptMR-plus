@@ -7,11 +7,10 @@ trainer:
   log_every_n_steps: 50 # log every n steps during training
   deterministic: false
   use_distributed_sampler: false # use customized distributed sampler defined in data module while validation
-  logger: 
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      project: deep_recon
-      mode: online
+  logger: false
+    #class_path: lightning.pytorch.loggers.WandbLogger
+    #init_args:
+     # project: deep_recon
   callbacks:
     -
       class_path: lightning.pytorch.callbacks.ModelCheckpoint

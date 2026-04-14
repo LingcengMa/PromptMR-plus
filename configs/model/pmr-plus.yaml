@@ -28,8 +28,8 @@ model:
 
 # add model tags to wandb
 trainer:
-  logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      tags: [promptmr+]
+  logger: false
+    #class_path: lightning.pytorch.loggers.WandbLogger
+    #init_args:
+     # tags: [promptmr+]
   
