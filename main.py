@@ -4,6 +4,7 @@ Description: This script is the main entry point for the LightningCLI.
 
 import os
 import sys
+import tempfile
 from itertools import chain
 from pathlib import Path
 from argparse import ArgumentParser
@@ -258,19 +259,62 @@ def get_model_init_arg_overrides():
                 overrides[key] = value
     return overrides
 
+
+def normalize_predict_ckpt_path():
+    """
+    Avoid LightningCLI's automatic ckpt hyperparameter parsing in predict mode.
+
+    Newer Lightning versions try to parse `ckpt_path` hyperparameters before our
+    custom model loading flow runs, which can fail for checkpoints saved with
+    older/foreign class paths.
+    """
+    if "predict" not in sys.argv:
+        return
+
+    # Rewrite CLI flag `--ckpt_path` -> `--model_ckpt_path`.
+    for i, arg in enumerate(sys.argv):
+        if arg == "--ckpt_path":
+            sys.argv[i] = "--model_ckpt_path"
+
+    # Rewrite YAML config key `ckpt_path` -> `model_ckpt_path`.
+    config_indices = [i + 1 for i, arg in enumerate(sys.argv) if arg == "--config" and i + 1 < len(sys.argv)]
+    for idx in config_indices:
+        config_path = sys.argv[idx]
+        if not os.path.exists(config_path):
+            continue
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        if not isinstance(cfg, dict) or "ckpt_path" not in cfg:
+            continue
+
+        cfg["model_ckpt_path"] = cfg["ckpt_path"]
+        del cfg["ckpt_path"]
+
+        fd, temp_path = tempfile.mkstemp(prefix="predict_cfg_", suffix=".yaml")
+        os.close(fd)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(cfg, f, sort_keys=False)
+        sys.argv[idx] = temp_path
+
 class CustomLightningCLI(LightningCLI):
+    def add_arguments_to_parser(self, parser):
+        parser.add_argument("--model_ckpt_path", type=str, default=None)
 
     def instantiate_classes(self):
         super().instantiate_classes()
         if self.config_init.subcommand == 'predict':
             model_class = self.config_init.predict.model.__class__
             init_args = get_model_init_arg_overrides()
-            self.model = model_class.load_from_checkpoint(self.config_init.predict.ckpt_path, **init_args)
+            ckpt_path = getattr(self.config_init.predict, "model_ckpt_path", None)
+            if ckpt_path is None:
+                ckpt_path = getattr(self.config_init.predict, "ckpt_path", None)
+            self.model = model_class.load_from_checkpoint(ckpt_path, **init_args)
 
 
 def run_cli():
 
     preprocess_save_dir()
+    normalize_predict_ckpt_path()
 
     cli = CustomLightningCLI(
         save_config_callback=CustomSaveConfigCallback,
