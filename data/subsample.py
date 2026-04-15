@@ -1,4 +1,5 @@
 import contextlib
+import warnings
 from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -646,7 +647,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
         self,
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
-        mask_path: str,
+        mask_path: Optional[str] = None,
         seed: Optional[int] = None
     ):
         """
@@ -673,6 +674,8 @@ class CmrxRecon24MaskFunc(MaskFunc):
                            'kt_uniform':[4,8,12,16,20,24],
                            'kt_random':[4,8,12,16,20,24],
                            'kt_radial':[4,8,12,16,20,24]}
+        if self.radial_mask_bank is None:
+            self.mask_dict.pop('kt_radial')
         self.masks_pool = list(self.mask_dict.keys())
 
         self.rng = np.random.RandomState(seed)
@@ -727,6 +730,11 @@ class CmrxRecon24MaskFunc(MaskFunc):
         elif mask_type=='kt_random':
             mask, num_low_frequencies = self.kt_random_mask.sample_kt_mask(shape, offset, self.num_adj_slices, slice_idx, num_t,num_slc, self.rng)
         elif mask_type=='kt_radial':
+            if self.radial_mask_bank is None:
+                raise RuntimeError(
+                    "kt_radial masks are not available because mask_path was not provided "
+                    "or the file could not be opened."
+                )
             ##TODO: codes below need to be wrapped in a MaskFunc as other mask types
             h,w = shape[-3:-1]
             acc = self.rng.choice(self.mask_dict[mask_type])
@@ -750,6 +758,21 @@ class CmrxRecon24MaskFunc(MaskFunc):
 
     def _load_masks(self,mask_path):
         ''' load cmrxrecon24 pseudo-radial masks from h5 file'''
+        if mask_path is None:
+            warnings.warn(
+                "No CMRxRecon radial mask file was provided (mask_path=None). "
+                "Falling back to non-radial masks only."
+            )
+            return None
+
+        mask_path = Path(mask_path)
+        if not mask_path.is_file():
+            warnings.warn(
+                f"CMRxRecon radial mask file not found at '{mask_path}'. "
+                "Falling back to non-radial masks only."
+            )
+            return None
+
         radial_mask_bank = {}
         with h5py.File(mask_path, 'r') as hf:
             keys = list(hf.keys())
@@ -766,7 +789,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self,
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
-        mask_path: str,
+        mask_path: Optional[str] = None,
         seed: Optional[int] = None,
         test_mask_type: str = 'uniform',
         test_acc: int = 10
@@ -791,6 +814,10 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self.radial_mask_bank = self._load_masks(mask_path)
 
         # mask_dict is set according to test config
+        if test_mask_type == "kt_radial" and self.radial_mask_bank is None:
+            raise ValueError(
+                "test_mask_type='kt_radial' requires a valid mask_path to mask_radial.h5."
+            )
         self.mask_dict = {test_mask_type:[test_acc]}
         self.masks_pool = list(self.mask_dict.keys())
 
