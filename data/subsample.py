@@ -642,13 +642,13 @@ class CmrxRecon24MaskFunc(MaskFunc):
     Sample data 
 
     """
-    def __init__(
-        self,
-        num_low_frequencies: Sequence[int],
-        num_adj_slices: int,
-        mask_path: str,
-        seed: Optional[int] = None
-    ):
+   def __init__(
+    self,
+    num_low_frequencies: Sequence[int],
+    num_adj_slices: int,
+    mask_path: str,
+    seed: Optional[int] = None
+):
         """
         Args:
             center_fractions: Fraction of low-frequency columns to be retained.
@@ -669,11 +669,13 @@ class CmrxRecon24MaskFunc(MaskFunc):
         self.radial_mask_bank = self._load_masks(mask_path)
 
         # mask_dict is set according to cmrxrecon24 challenge settings
-        self.mask_dict = {'uniform':[4,8,10],
-                           'kt_uniform':[4,8,12,16,20,24],
-                           'kt_random':[4,8,12,16,20,24],
-                           'kt_radial':[4,8,12,16,20,24]}
-        self.masks_pool = list(self.mask_dict.keys())
+        self.mask_dict = {
+    'uniform': [4,8,10],
+    'kt_uniform': [4,8,12,16,20,24],
+    'kt_random': [4,8,12,16,20,24],
+    'kt_radial': [4,8,12,16,20,24],
+}
+self.masks_pool = list(self.mask_dict.keys())
 
         self.rng = np.random.RandomState(seed)
 
@@ -726,12 +728,12 @@ class CmrxRecon24MaskFunc(MaskFunc):
             mask, num_low_frequencies = self.kt_uniform_mask.sample_kt_mask(shape, offset, self.num_adj_slices, slice_idx, num_t,num_slc, self.rng, self.seed)
         elif mask_type=='kt_random':
             mask, num_low_frequencies = self.kt_random_mask.sample_kt_mask(shape, offset, self.num_adj_slices, slice_idx, num_t,num_slc, self.rng)
-        elif mask_type=='kt_radial':
-            ##TODO: codes below need to be wrapped in a MaskFunc as other mask types
-            h,w = shape[-3:-1]
-            acc = self.rng.choice(self.mask_dict[mask_type])
-            num_low_frequencies = self.rng.choice(self.num_low_frequencies)
-            mask_ = self.radial_mask_bank[f'acc{acc}_{w}x{h}'][:num_t]
+       elif mask_type == 'kt_radial':
+    ##TODO: codes below need to be wrapped in a MaskFunc as other mask types
+    h, w = shape[-3:-1]
+    acc = self.rng.choice(self.mask_dict[mask_type])
+    num_low_frequencies = self.rng.choice(self.num_low_frequencies)
+    mask_ = self.radial_mask_bank[f'acc{acc}_{w}x{h}'][:num_t]
 
             if self.seed is None: ##* training
                 ti = self.rng.randint(num_t)
@@ -748,31 +750,30 @@ class CmrxRecon24MaskFunc(MaskFunc):
 
         return mask.float(), num_low_frequencies
 
-    def _load_masks(self,mask_path):
-        ''' load cmrxrecon24 pseudo-radial masks from h5 file'''
-        mask_path = Path(mask_path)
-        if not mask_path.is_file():
-            raise FileNotFoundError(
-                f"CMRxRecon radial mask file not found: '{mask_path}'. "
-                "Please set `mask_path` to a valid `mask_radial.h5` path."
-            )
+    def _load_masks(self, mask_path):
+    ''' load cmrxrecon24 pseudo-radial masks from h5 file'''
+    mask_path = Path(mask_path)
+    if not mask_path.is_file():
+        raise FileNotFoundError(
+            f"CMRxRecon radial mask file not found: '{mask_path}'. "
+            "Please set `mask_path` to a valid `mask_radial.h5` path."
+        )
 
-        radial_mask_bank = {}
-        try:
-            with h5py.File(mask_path, 'r') as hf:
-                keys = list(hf.keys())
-                for key_ in keys:
-                    radial_mask_bank[key_] = torch.from_numpy(hf[key_][()].transpose(0,2,1))
-        except OSError as exc:
-            raise RuntimeError(
-                f"Failed to open CMRxRecon radial mask file '{mask_path}': {exc}."
-            )
-        return radial_mask_bank
+    radial_mask_bank = {}
+    try:
+        with h5py.File(mask_path, 'r') as hf:
+            keys = list(hf.keys())
+            for key_ in keys:
+                radial_mask_bank[key_] = torch.from_numpy(hf[key_][()].transpose(0,2,1))
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to open CMRxRecon radial mask file '{mask_path}': {exc}."
+        )
+    return radial_mask_bank
 
 class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
     """
     Sample data 
-
     """
     def __init__(
         self,
@@ -783,27 +784,13 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         test_mask_type: str = 'uniform',
         test_acc: int = 10
     ):
-        """
-        Args:
-            center_fractions: Fraction of low-frequency columns to be retained.
-                If multiple values are provided, then one of these numbers is
-                chosen uniformly each time.
-            accelerations: Amount of under-sampling. This should have the same
-                length as center_fractions. If multiple values are provided,
-                then one of these is chosen uniformly each time.
-            allow_any_combination: Whether to allow cross combinations of
-                elements from ``center_fractions`` and ``accelerations``.
-            seed: Seed for starting the internal random number generator of the
-                ``MaskFunc``.
-        """
-
-        self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed )
-        self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed )
-        self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed )
+        self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
+        self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
+        self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.radial_mask_bank = self._load_masks(mask_path)
 
         # mask_dict is set according to test config
-        self.mask_dict = {test_mask_type:[test_acc]}
+        self.mask_dict = {test_mask_type: [test_acc]}
         self.masks_pool = list(self.mask_dict.keys())
 
         self.rng = np.random.RandomState(seed)
