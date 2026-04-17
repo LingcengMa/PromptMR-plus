@@ -1,5 +1,6 @@
 import contextlib
 import os
+import warnings
 from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -667,15 +668,16 @@ class CmrxRecon24MaskFunc(MaskFunc):
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 10], allow_any_combination=True, seed=seed)
         self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 12, 16, 20, 24], allow_any_combination=True, seed=seed)
         self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [4, 8, 12, 16, 20, 24], allow_any_combination=True, seed=seed)
-        self.radial_mask_bank = self._load_masks(mask_path)
+        self.radial_mask_bank = self._load_masks(mask_path, required=False)
 
         # mask_dict is set according to cmrxrecon24 challenge settings
         self.mask_dict = {
             "uniform": [4, 8, 10],
             "kt_uniform": [4, 8, 12, 16, 20, 24],
             "kt_random": [4, 8, 12, 16, 20, 24],
-            "kt_radial": [4, 8, 12, 16, 20, 24],
         }
+        if self.radial_mask_bank:
+            self.mask_dict["kt_radial"] = [4, 8, 12, 16, 20, 24]
         self.masks_pool = list(self.mask_dict.keys())
 
         self.rng = np.random.RandomState(seed)
@@ -754,7 +756,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
 
         return mask.float(), num_low_frequencies
 
-    def _load_masks(self, mask_path):
+    def _load_masks(self, mask_path, required: bool = False):
         """Load CMRxRecon24 pseudo-radial masks from an h5 file."""
         candidate_paths = []
         if mask_path:
@@ -775,13 +777,20 @@ class CmrxRecon24MaskFunc(MaskFunc):
         valid_paths = [path for path in candidate_paths if path.is_file()]
         if not valid_paths:
             searched_paths = "\n".join(f"  - {path}" for path in candidate_paths) or "  - (none)"
-            raise FileNotFoundError(
+            msg = (
                 "CMRxRecon radial mask file not found.\n"
                 "Searched the following paths:\n"
                 f"{searched_paths}\n"
                 "Provide `mask_path`, set `PROMPTMR_CMRX_MASK_PATH`, or place `mask_radial.h5` "
                 "at the project root. Download link is documented in DATASET.md."
             )
+            if required:
+                raise FileNotFoundError(msg)
+            warnings.warn(
+                f"{msg}\nProceeding without `kt_radial`; only cartesian masks will be sampled.",
+                RuntimeWarning,
+            )
+            return {}
         mask_path = valid_paths[0]
 
         radial_mask_bank = {}
@@ -812,10 +821,14 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
-        self.radial_mask_bank = self._load_masks(mask_path)
+        self.radial_mask_bank = self._load_masks(mask_path, required=(test_mask_type == "kt_radial"))
 
         # mask_dict is set according to test config
         self.mask_dict = {test_mask_type: [test_acc]}
+        if test_mask_type == "kt_radial" and not self.radial_mask_bank:
+            raise ValueError(
+                "`test_mask_type='kt_radial'` requested, but no radial mask bank could be loaded."
+            )
         self.masks_pool = list(self.mask_dict.keys())
 
         self.rng = np.random.RandomState(seed)
