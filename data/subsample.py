@@ -1,4 +1,6 @@
 import contextlib
+import os
+import warnings
 from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -642,13 +644,13 @@ class CmrxRecon24MaskFunc(MaskFunc):
     Sample data 
 
     """
-   def __init__(
-    self,
-    num_low_frequencies: Sequence[int],
-    num_adj_slices: int,
-    mask_path: str,
-    seed: Optional[int] = None
-):
+    def __init__(
+        self,
+        num_low_frequencies: Sequence[int],
+        num_adj_slices: int,
+        mask_path: Optional[str] = None,
+        seed: Optional[int] = None,
+    ):
         """
         Args:
             center_fractions: Fraction of low-frequency columns to be retained.
@@ -663,24 +665,25 @@ class CmrxRecon24MaskFunc(MaskFunc):
                 ``MaskFunc``.
         """
         self.num_low_frequencies = num_low_frequencies
-        self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4,8,10], allow_any_combination=True, seed=seed )
-        self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4,8,12,16,20,24], allow_any_combination=True, seed=seed )
-        self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [4,8,12,16,20,24], allow_any_combination=True, seed=seed )
-        self.radial_mask_bank = self._load_masks(mask_path)
+        self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 10], allow_any_combination=True, seed=seed)
+        self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 12, 16, 20, 24], allow_any_combination=True, seed=seed)
+        self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [4, 8, 12, 16, 20, 24], allow_any_combination=True, seed=seed)
+        self.radial_mask_bank = self._load_masks(mask_path, required=False)
 
         # mask_dict is set according to cmrxrecon24 challenge settings
         self.mask_dict = {
-    'uniform': [4,8,10],
-    'kt_uniform': [4,8,12,16,20,24],
-    'kt_random': [4,8,12,16,20,24],
-    'kt_radial': [4,8,12,16,20,24],
-}
-self.masks_pool = list(self.mask_dict.keys())
+            "uniform": [4, 8, 10],
+            "kt_uniform": [4, 8, 12, 16, 20, 24],
+            "kt_random": [4, 8, 12, 16, 20, 24],
+            "kt_radial": [4, 8, 12, 16, 20, 24],
+        }
+        self.masks_pool = list(self.mask_dict.keys())
+        self._warned_generated_radial = False
 
         self.rng = np.random.RandomState(seed)
 
         self.num_adj_slices = num_adj_slices
-        self.start_adj, self.end_adj = -(num_adj_slices//2), num_adj_slices//2+1
+        self.start_adj, self.end_adj = -(num_adj_slices // 2), num_adj_slices // 2 + 1
 
     def choose_mask(self):
         '''
@@ -720,56 +723,128 @@ self.masks_pool = list(self.mask_dict.keys())
 
         return mask, num_low_frequencies, mask_type
 
-    def sample_mask(self,mask_type, shape,offset=None,  slice_idx=None,num_t=None,num_slc=None):
-        
-        if mask_type=='uniform':
+    def sample_mask(self, mask_type, shape, offset=None, slice_idx=None, num_t=None, num_slc=None):
+        if mask_type == "uniform":
             mask, num_low_frequencies = self.uniform_mask.sample_uniform_mask(shape, offset, self.rng)
-        elif mask_type=='kt_uniform':
-            mask, num_low_frequencies = self.kt_uniform_mask.sample_kt_mask(shape, offset, self.num_adj_slices, slice_idx, num_t,num_slc, self.rng, self.seed)
-        elif mask_type=='kt_random':
-            mask, num_low_frequencies = self.kt_random_mask.sample_kt_mask(shape, offset, self.num_adj_slices, slice_idx, num_t,num_slc, self.rng)
-       elif mask_type == 'kt_radial':
-    ##TODO: codes below need to be wrapped in a MaskFunc as other mask types
-    h, w = shape[-3:-1]
-    acc = self.rng.choice(self.mask_dict[mask_type])
-    num_low_frequencies = self.rng.choice(self.num_low_frequencies)
-    mask_ = self.radial_mask_bank[f'acc{acc}_{w}x{h}'][:num_t]
+        elif mask_type == "kt_uniform":
+            mask, num_low_frequencies = self.kt_uniform_mask.sample_kt_mask(
+                shape, offset, self.num_adj_slices, slice_idx, num_t, num_slc, self.rng, self.seed
+            )
+        elif mask_type == "kt_random":
+            mask, num_low_frequencies = self.kt_random_mask.sample_kt_mask(
+                shape, offset, self.num_adj_slices, slice_idx, num_t, num_slc, self.rng
+            )
+        elif mask_type == "kt_radial":
+            # TODO: wrap this path in a dedicated MaskFunc like the other mask types.
+            h, w = shape[-3:-1]
+            acc = self.rng.choice(self.mask_dict[mask_type])
+            num_low_frequencies = self.rng.choice(self.num_low_frequencies)
+            radial_key = f"acc{acc}_{w}x{h}"
+            if radial_key in self.radial_mask_bank:
+                mask_ = self.radial_mask_bank[radial_key][:num_t]
+            else:
+                if not self._warned_generated_radial:
+                    warnings.warn(
+                        "Radial mask bank unavailable for requested shape/acceleration. "
+                        "Falling back to on-the-fly pseudo-radial mask generation.",
+                        RuntimeWarning,
+                    )
+                    self._warned_generated_radial = True
+                mask_ = self._generate_pseudo_radial_masks(num_t, h, w, acc)
 
             if self.seed is None: ##* training
                 ti = self.rng.randint(num_t)
             else: ##* validation
                 ##* slice_idx is of range(num_t*num_slc)
-                ti = slice_idx//num_slc
-            select_list = self._get_ti_adj_idx_list(ti,num_t)
-            
+                ti = slice_idx // num_slc
+            select_list = self._get_ti_adj_idx_list(ti, num_t)
+
             mask = mask_[select_list]
-            mask = mask[...,None] # torch.Size([5, 448, 204,1])
+            mask = mask[..., None]  # torch.Size([5, 448, 204, 1])
 
         else:
             raise ValueError(f"{mask_type} not supported")
 
         return mask.float(), num_low_frequencies
 
-    def _load_masks(self, mask_path):
-    ''' load cmrxrecon24 pseudo-radial masks from h5 file'''
-    mask_path = Path(mask_path)
-    if not mask_path.is_file():
-        raise FileNotFoundError(
-            f"CMRxRecon radial mask file not found: '{mask_path}'. "
-            "Please set `mask_path` to a valid `mask_radial.h5` path."
+    def _generate_pseudo_radial_masks(self, num_t: int, h: int, w: int, acc: int) -> torch.Tensor:
+        """
+        Procedurally generate pseudo-radial masks when precomputed masks are unavailable.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_radial mask generation.")
+
+        yy, xx = np.mgrid[0:h, 0:w]
+        yy = yy - (h - 1) / 2.0
+        xx = xx - (w - 1) / 2.0
+
+        num_spokes = max(1, int(round(min(h, w) / max(acc, 1))))
+        line_width = 0.6
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            # Deterministic temporal angle shift keeps a dynamic kt-radial pattern.
+            phase = (t / max(num_t, 1)) * np.pi
+            angles = np.linspace(0.0, np.pi, num=num_spokes, endpoint=False) + phase
+
+            frame_mask = np.zeros((h, w), dtype=bool)
+            for theta in angles:
+                distance_to_line = np.abs(xx * np.cos(theta) + yy * np.sin(theta))
+                frame_mask |= distance_to_line <= line_width
+
+            masks[t] = frame_mask.astype(np.float32)
+
+        return torch.from_numpy(masks)
+
+    def _load_masks(self, mask_path, required: bool = False):
+        """Load CMRxRecon24 pseudo-radial masks from an h5 file."""
+        candidate_paths = []
+        if mask_path:
+            candidate_paths.append(Path(mask_path).expanduser())
+
+        env_mask_path = os.environ.get("PROMPTMR_CMRX_MASK_PATH")
+        if env_mask_path:
+            candidate_paths.append(Path(env_mask_path).expanduser())
+
+        repo_root = Path(__file__).resolve().parents[1]
+        candidate_paths.extend(
+            [
+                repo_root / "mask_radial.h5",
+                repo_root / "mask_files_required_for_training" / "mask_radial.h5",
+            ]
         )
 
-    radial_mask_bank = {}
-    try:
-        with h5py.File(mask_path, 'r') as hf:
-            keys = list(hf.keys())
-            for key_ in keys:
-                radial_mask_bank[key_] = torch.from_numpy(hf[key_][()].transpose(0,2,1))
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to open CMRxRecon radial mask file '{mask_path}': {exc}."
-        )
-    return radial_mask_bank
+        valid_paths = [path for path in candidate_paths if path.is_file()]
+        if not valid_paths:
+            searched_paths = "\n".join(f"  - {path}" for path in candidate_paths) or "  - (none)"
+            msg = (
+                "CMRxRecon radial mask file not found.\n"
+                "Searched the following paths:\n"
+                f"{searched_paths}\n"
+                "Provide `mask_path`, set `PROMPTMR_CMRX_MASK_PATH`, or place `mask_radial.h5` "
+                "at the project root. Download link is documented in DATASET.md."
+            )
+            if required:
+                raise FileNotFoundError(msg)
+            warnings.warn(
+                f"{msg}\nWill fall back to on-the-fly pseudo-radial mask generation when needed.",
+                RuntimeWarning,
+            )
+            return {}
+        mask_path = valid_paths[0]
+
+        radial_mask_bank = {}
+        try:
+            with h5py.File(mask_path, "r") as hf:
+                keys = list(hf.keys())
+                for key_ in keys:
+                    radial_mask_bank[key_] = torch.from_numpy(hf[key_][()].transpose(0, 2, 1))
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to open CMRxRecon radial mask file '{mask_path}': {exc}."
+            ) from exc
+        return radial_mask_bank
 
 class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
     """
@@ -779,7 +854,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self,
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
-        mask_path: str,
+        mask_path: Optional[str] = None,
         seed: Optional[int] = None,
         test_mask_type: str = 'uniform',
         test_acc: int = 10
@@ -787,11 +862,12 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
-        self.radial_mask_bank = self._load_masks(mask_path)
+        self.radial_mask_bank = self._load_masks(mask_path, required=False)
 
         # mask_dict is set according to test config
         self.mask_dict = {test_mask_type: [test_acc]}
         self.masks_pool = list(self.mask_dict.keys())
+        self._warned_generated_radial = False
 
         self.rng = np.random.RandomState(seed)
 
