@@ -861,6 +861,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         seed: Optional[int] = None,
         test_mask_type: str = 'uniform',
         test_acc: int = 10
+    ):
 
         self.num_low_frequencies = num_low_frequencies
         self.seed = seed
