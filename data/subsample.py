@@ -664,6 +664,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
             seed: Seed for starting the internal random number generator of the
                 ``MaskFunc``.
         """
+
         self.num_low_frequencies = num_low_frequencies
         self.seed = seed
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 10], allow_any_combination=True, seed=seed)
@@ -679,6 +680,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
             "kt_radial": [4, 8, 12, 16, 20, 24],
         }
         self.masks_pool = list(self.mask_dict.keys())
+
         self._warned_generated_radial = not bool(self.radial_mask_bank)
 
         self.rng = np.random.RandomState(seed)
@@ -859,7 +861,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         seed: Optional[int] = None,
         test_mask_type: str = 'uniform',
         test_acc: int = 10
-    ):
+
         self.num_low_frequencies = num_low_frequencies
         self.seed = seed
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
@@ -870,6 +872,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         # mask_dict is set according to test config
         self.mask_dict = {test_mask_type: [test_acc]}
         self.masks_pool = list(self.mask_dict.keys())
+
         self._warned_generated_radial = not bool(self.radial_mask_bank)
 
         self.rng = np.random.RandomState(seed)
