@@ -18,6 +18,9 @@ import numpy as np
 
 
 def _get_loaded_libstdcpp_path():
+    # NOTE: We intentionally inspect the library actually loaded by the current
+    # Python process (via /proc/self/maps), rather than checking candidate
+    # filesystem paths. This avoids false positives in mixed conda/system setups.
     ctypes.CDLL("libstdc++.so.6")
     with open("/proc/self/maps", "r", encoding="utf-8") as maps_file:
         for line in maps_file:
