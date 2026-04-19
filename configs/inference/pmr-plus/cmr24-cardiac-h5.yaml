@@ -1,0 +1,56 @@
+data:
+  class_path: pl_modules.DataModule
+  init_args:
+    # Set this to the output_root used by mat_to_CmrxReconSliceDataset_all_subject.py
+    # It must contain: train/, val/, h5_dataset/
+    data_path: /path/to/promptmr_dataset
+    slice_dataset: data.CmrxReconSliceDataset
+    challenge: multicoil
+    train_transform:
+      class_path: data.CmrxReconDataTransform
+      init_args:
+        mask_type: 'dummy'
+    val_transform:
+      class_path: data.CmrxReconDataTransform
+      init_args:
+        mask_func:
+          class_path: data.CmrxRecon24TestValMaskFunc
+          init_args:
+            num_low_frequencies:
+              - 16
+            num_adj_slices: &n_adj_slc 5
+            # Optional: set mask_path or PROMPTMR_CMRX_MASK_PATH for precomputed radial masks.
+            # If omitted, mask generation will still work with built-in fallback behavior.
+            mask_path: null
+            test_mask_type: 'uniform'
+            test_acc: 10
+        uniform_resolution: null
+        use_seed: true
+    combine_train_val: false
+    num_adj_slices: *n_adj_slc
+    batch_size: 1
+    distributed_sampler: false
+    use_dataset_cache_file: false
+    val_filter:
+      class_path: data.FuncFilterString
+      init_args:
+        filter_str: null
+
+seed_everything: 42
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: 1
+  num_nodes: 1
+  logger: false
+  callbacks:
+    -
+      class_path: __main__.CustomWriter
+      init_args:
+        output_dir: weights/cmr24-cardiac/promptmr-plus-inference
+        write_interval: batch_and_epoch
+
+model:
+  class_path: pl_modules.PromptMrModule
+
+ckpt_path: weights/cmr24-cardiac/promptmr-plus-epoch=11-step=337764.ckpt

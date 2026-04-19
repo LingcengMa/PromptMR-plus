@@ -681,7 +681,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
         }
         self.masks_pool = list(self.mask_dict.keys())
 
-        self._warned_generated_radial = not bool(self.radial_mask_bank)
+        self._warned_generated_radial = False
 
         self.rng = np.random.RandomState(seed)
 
@@ -755,10 +755,17 @@ class CmrxRecon24MaskFunc(MaskFunc):
                     self._warned_generated_radial = True
                 mask_ = self._generate_pseudo_radial_masks(num_t, h, w, acc)
 
+            if num_t is None or num_slc is None:
+                raise ValueError(
+                    "`num_t` and `num_slc` must be provided for `kt_radial` mask sampling."
+                )
+
             if self.seed is None: ##* training
                 ti = self.rng.randint(num_t)
             else: ##* validation
                 ##* slice_idx is of range(num_t*num_slc)
+                if slice_idx is None:
+                    raise ValueError("`slice_idx` must be provided when seed is set for validation sampling.")
                 ti = slice_idx // num_slc
             select_list = self._get_ti_adj_idx_list(ti, num_t)
 
@@ -874,7 +881,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self.mask_dict = {test_mask_type: [test_acc]}
         self.masks_pool = list(self.mask_dict.keys())
 
-        self._warned_generated_radial = not bool(self.radial_mask_bank)
+        self._warned_generated_radial = False
 
         self.rng = np.random.RandomState(seed)
 
