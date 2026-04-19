@@ -133,6 +133,15 @@ For exmaple, run inference of PromptMR+ on fastmri-knee dataset
 python main.py predict --config configs/inference/pmr-plus/fm-knee.yaml
 ```
 
+
+## Python Compile Check
+
+To compile-check only project sources (excluding `.git` and `.venv`), run:
+
+```bash
+python check_compile.py
+```
+
 ## License
 
 Non-Commercial Research [License](LICENSE.md).
