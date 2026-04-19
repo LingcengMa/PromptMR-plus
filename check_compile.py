@@ -9,6 +9,8 @@ import pathlib
 import re
 import sys
 
+CONFLICT_MARKERS = ("<" * 7 + " ", "=" * 7, ">" * 7 + " ")
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -33,6 +35,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def has_merge_conflict_markers(root: pathlib.Path, exclude: re.Pattern[str]) -> bool:
+    has_conflict = False
+    for py_file in root.rglob("*.py"):
+        normalized = py_file.as_posix()
+        if exclude.search(normalized):
+            continue
+        try:
+            content = py_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Warning: cannot read {py_file}: {exc}", file=sys.stderr)
+            continue
+        if any(marker in content for marker in CONFLICT_MARKERS):
+            print(f"Merge conflict marker found: {py_file}", file=sys.stderr)
+            has_conflict = True
+    return has_conflict
+
+
 def main() -> int:
     args = parse_args()
     root = pathlib.Path(args.path).resolve()
@@ -47,7 +66,8 @@ def main() -> int:
         force=False,
         workers=0,
     )
-    return 0 if ok else 1
+    conflict_free = not has_merge_conflict_markers(root, exclude)
+    return 0 if ok and conflict_free else 1
 
 
 if __name__ == "__main__":
