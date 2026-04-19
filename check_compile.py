@@ -10,6 +10,7 @@ import re
 import sys
 
 CONFLICT_MARKERS = ("<" * 7 + " ", "=" * 7, ">" * 7 + " ")
+TEXT_EXTENSIONS = {".py", ".md", ".yaml", ".yml", ".txt", ".toml", ".json", ".sh"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,17 +38,19 @@ def parse_args() -> argparse.Namespace:
 
 def has_merge_conflict_markers(root: pathlib.Path, exclude: re.Pattern[str]) -> bool:
     has_conflict = False
-    for py_file in root.rglob("*.py"):
-        normalized = py_file.as_posix()
+    for source_file in root.rglob("*"):
+        if not source_file.is_file() or source_file.suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        normalized = source_file.as_posix()
         if exclude.search(normalized):
             continue
         try:
-            content = py_file.read_text(encoding="utf-8")
+            content = source_file.read_text(encoding="utf-8")
         except OSError as exc:
-            print(f"Warning: cannot read {py_file}: {exc}", file=sys.stderr)
+            print(f"Warning: cannot read {source_file}: {exc}", file=sys.stderr)
             continue
         if any(marker in content for marker in CONFLICT_MARKERS):
-            print(f"Merge conflict marker found: {py_file}", file=sys.stderr)
+            print(f"Merge conflict marker found: {source_file}", file=sys.stderr)
             has_conflict = True
     return has_conflict
 
