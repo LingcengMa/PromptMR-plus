@@ -851,16 +851,18 @@ class CmrxRecon24MaskFunc(MaskFunc):
 
 class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
     """
-    Sample data 
+    Sample test/validation data.
     """
+
     def __init__(
         self,
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
         mask_path: Optional[str] = None,
         seed: Optional[int] = None,
-        test_mask_type: str = 'uniform',
-        test_acc: int = 10
+        test_mask_type: str = "uniform",
+        test_acc: int = 10,
+    ):
 
         self.num_low_frequencies = num_low_frequencies
         self.seed = seed
