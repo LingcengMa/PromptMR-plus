@@ -5,6 +5,8 @@ Description: This script is the main entry point for the LightningCLI.
 import os
 import sys
 import tempfile
+import subprocess
+import ctypes
 from itertools import chain
 from pathlib import Path
 from argparse import ArgumentParser
@@ -13,6 +15,58 @@ from collections import defaultdict
 import yaml
 import torch
 import numpy as np
+
+
+def _get_loaded_libstdcpp_path():
+    ctypes.CDLL("libstdc++.so.6")
+    with open("/proc/self/maps", "r", encoding="utf-8") as maps_file:
+        for line in maps_file:
+            if "libstdc++.so.6" not in line:
+                continue
+            parts = line.strip().split()
+            if parts and parts[-1].startswith("/"):
+                return parts[-1]
+    return None
+
+
+def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
+    """
+    Check whether the *currently loaded* libstdc++ exposes the requested CXXABI symbol.
+    """
+    loaded_lib = _get_loaded_libstdcpp_path()
+    if not loaded_lib:
+        return False
+
+    result = subprocess.run(
+        ["strings", loaded_lib],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0 and symbol in result.stdout:
+        return True
+    return False
+
+
+def _validate_runtime_or_exit():
+    """
+    Fail fast with actionable guidance when the runtime ABI is too old for SciPy.
+    """
+    if _has_cxxabi_symbol("CXXABI_1.3.15"):
+        return
+    loaded_lib = _get_loaded_libstdcpp_path()
+    message = (
+        "Unsupported C++ runtime detected: missing CXXABI_1.3.15 in libstdc++.so.6.\n"
+        f"Loaded libstdc++: {loaded_lib}\n"
+        "This commonly happens with Python 3.13 + SciPy/Lightning environments.\n"
+        "Fix by creating a Python 3.12 environment, or run:\n"
+        "  conda install -c conda-forge 'libstdcxx-ng>=13' 'libgcc-ng>=13' scipy\n"
+    )
+    raise SystemExit(message)
+
+
+_validate_runtime_or_exit()
+
 from lightning.pytorch.cli import LightningCLI, SaveConfigCallback
 from lightning.pytorch.callbacks import BasePredictionWriter, Callback
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
