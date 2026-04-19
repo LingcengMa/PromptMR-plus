@@ -132,7 +132,6 @@ your C++ runtime is older than what SciPy needs. Use one of these fixes:
    ```
 
 For conda users, a tested starter environment is also provided in [`environment.yml`](environment.yml).
-`main.py` now performs a startup runtime check and exits early with this guidance if the ABI symbol is missing.
 
 ## Data Preparation
 
