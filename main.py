@@ -6,15 +6,45 @@ import os
 import sys
 import tempfile
 import subprocess
+import importlib.util
 from ctypes.util import find_library
 from itertools import chain
 from pathlib import Path
 from argparse import ArgumentParser
 from collections import defaultdict
 
+import numpy as np
+
+
+def _ensure_required_modules_or_exit():
+    """
+    Fail fast with actionable guidance if required runtime dependencies
+    are not installed in the active Python environment.
+    """
+    required_modules = {
+        "yaml": "PyYAML",
+        "torch": "torch",
+        "lightning": "lightning",
+    }
+    missing_packages = [
+        package_name
+        for module_name, package_name in required_modules.items()
+        if importlib.util.find_spec(module_name) is None
+    ]
+    if missing_packages:
+        missing = ", ".join(missing_packages)
+        raise SystemExit(
+            "Missing required Python package(s): "
+            f"{missing}.\n"
+            "Install project dependencies first, for example:\n"
+            "  python -m pip install -r requirements.txt\n"
+        )
+
+
+_ensure_required_modules_or_exit()
+
 import yaml
 import torch
-import numpy as np
 
 
 def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
