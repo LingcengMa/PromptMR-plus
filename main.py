@@ -17,37 +17,24 @@ import torch
 import numpy as np
 
 
-def _get_libstdcpp_candidates():
-    candidates = []
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix:
-        candidates.append(os.path.join(conda_prefix, "lib", "libstdc++.so.6"))
-
-    libstdcpp_name = find_library("stdc++")
-    if libstdcpp_name:
-        candidates.append(libstdcpp_name)
-    candidates.extend([
-        "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
-        "/lib/x86_64-linux-gnu/libstdc++.so.6",
-    ])
-
-    # Keep insertion order while de-duplicating.
-    deduped = []
-    seen = set()
-    for item in candidates:
-        if item in seen:
-            continue
-        seen.add(item)
-        deduped.append(item)
-    return deduped
-
-
 def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
     """
-    Check whether an active/discoverable libstdc++ exposes the requested CXXABI symbol.
+    Check whether the active libstdc++ exposes the requested CXXABI symbol.
     """
-    for candidate in _get_libstdcpp_candidates():
-        if os.path.isabs(candidate) and not os.path.exists(candidate):
+    libstdcpp_name = find_library("stdc++")
+    if not libstdcpp_name:
+        return False
+
+    search_paths = []
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        search_paths.append(os.path.join(conda_prefix, "lib", "libstdc++.so.6"))
+    search_paths.append(libstdcpp_name)
+    search_paths.append("/usr/lib/x86_64-linux-gnu/libstdc++.so.6")
+    search_paths.append("/lib/x86_64-linux-gnu/libstdc++.so.6")
+
+    for candidate in search_paths:
+        if not os.path.exists(candidate):
             continue
         result = subprocess.run(
             ["strings", candidate],
