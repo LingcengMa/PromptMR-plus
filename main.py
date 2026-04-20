@@ -281,16 +281,20 @@ class CustomWriter(BasePredictionWriter):
         pass
         
     def write_on_epoch_end(self, trainer, pl_module, predictions, batch_indices):
-
-        gathered = [None] * torch.distributed.get_world_size()
-        gathered_indices = [None] * torch.distributed.get_world_size()
-        torch.distributed.all_gather_object(gathered, predictions)
-        torch.distributed.all_gather_object(gathered_indices, batch_indices)
-        torch.distributed.barrier()
-        if not trainer.is_global_zero:
+        is_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
+        if is_dist:
+            gathered = [None] * torch.distributed.get_world_size()
+            gathered_indices = [None] * torch.distributed.get_world_size()
+            torch.distributed.all_gather_object(gathered, predictions)
+            torch.distributed.all_gather_object(gathered_indices, batch_indices)
+            torch.distributed.barrier()
+            if not trainer.is_global_zero:
+                return
+            predictions = sum(gathered, [])
+            batch_indices = sum(gathered_indices, [])
+        elif not trainer.is_global_zero:
             return
-        predictions = sum(gathered, [])
-        batch_indices = sum(gathered_indices, [])
+
         batch_indices = list(chain.from_iterable(batch_indices))
         outputs = defaultdict(list)
         num_slc_dict = {} # for reshape
