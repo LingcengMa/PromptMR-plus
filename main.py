@@ -5,6 +5,9 @@ Description: This script is the main entry point for the LightningCLI.
 import os
 import sys
 import tempfile
+import subprocess
+import glob
+from ctypes.util import find_library
 from itertools import chain
 from pathlib import Path
 from argparse import ArgumentParser
@@ -13,6 +16,90 @@ from collections import defaultdict
 import yaml
 import torch
 import numpy as np
+
+
+def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
+    """
+    Check whether the active libstdc++ exposes the requested CXXABI symbol.
+    """
+    libstdcpp_name = find_library("stdc++")
+
+    search_paths = []
+    scipy_candidates = glob.glob(
+        os.path.join(
+            sys.prefix,
+            "lib",
+            f"python{sys.version_info.major}.{sys.version_info.minor}",
+            "site-packages",
+            "scipy",
+            "fft",
+            "_pocketfft",
+            "pypocketfft*.so",
+        )
+    )
+    if scipy_candidates:
+        ldd = subprocess.run(
+            ["ldd", scipy_candidates[0]],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if ldd.returncode == 0:
+            for line in ldd.stdout.splitlines():
+                if "libstdc++.so.6" not in line or "=>" not in line:
+                    continue
+                path = line.split("=>", maxsplit=1)[1].strip().split()[0]
+                if path:
+                    search_paths.append(path)
+                    break
+
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        search_paths.append(os.path.join(conda_prefix, "lib", "libstdc++.so.6"))
+    if libstdcpp_name:
+        search_paths.append(libstdcpp_name)
+    search_paths.append("/usr/lib/x86_64-linux-gnu/libstdc++.so.6")
+    search_paths.append("/lib/x86_64-linux-gnu/libstdc++.so.6")
+
+    seen = set()
+    for candidate in search_paths:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if not os.path.exists(candidate):
+            continue
+        result = subprocess.run(
+            ["strings", candidate],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and symbol in result.stdout:
+            return True
+    return False
+
+
+def _validate_runtime_or_exit():
+    """
+    Fail fast with actionable guidance when the runtime ABI is too old for SciPy.
+    """
+    if _has_cxxabi_symbol("CXXABI_1.3.15"):
+        return
+    message = (
+        "Unsupported C++ runtime detected: missing CXXABI_1.3.15 in libstdc++.so.6.\n"
+        "If your conda lib has this symbol but imports still fail, your process is likely loading /lib/.../libstdc++.so.6.\n"
+        "Activate the environment and retry, or run:\n"
+        "  export LD_LIBRARY_PATH=\"$CONDA_PREFIX/lib:${LD_LIBRARY_PATH}\"\n"
+        "before running python.\n"
+        "This commonly happens with Python 3.13 + SciPy/Lightning environments.\n"
+        "Fix by creating a Python 3.12 environment, or run:\n"
+        "  conda install -c conda-forge 'libstdcxx-ng>=13' 'libgcc-ng>=13' scipy\n"
+    )
+    raise SystemExit(message)
+
+
+_validate_runtime_or_exit()
+
 from lightning.pytorch.cli import LightningCLI, SaveConfigCallback
 from lightning.pytorch.callbacks import BasePredictionWriter, Callback
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
