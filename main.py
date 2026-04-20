@@ -6,7 +6,6 @@ import os
 import sys
 import tempfile
 import subprocess
-import glob
 from ctypes.util import find_library
 from itertools import chain
 from pathlib import Path
@@ -23,49 +22,17 @@ def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
     Check whether the active libstdc++ exposes the requested CXXABI symbol.
     """
     libstdcpp_name = find_library("stdc++")
+    if not libstdcpp_name:
+        return False
 
     search_paths = []
-    scipy_candidates = glob.glob(
-        os.path.join(
-            sys.prefix,
-            "lib",
-            f"python{sys.version_info.major}.{sys.version_info.minor}",
-            "site-packages",
-            "scipy",
-            "fft",
-            "_pocketfft",
-            "pypocketfft*.so",
-        )
-    )
-    if scipy_candidates:
-        ldd = subprocess.run(
-            ["ldd", scipy_candidates[0]],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if ldd.returncode == 0:
-            for line in ldd.stdout.splitlines():
-                if "libstdc++.so.6" not in line or "=>" not in line:
-                    continue
-                path = line.split("=>", maxsplit=1)[1].strip().split()[0]
-                if path:
-                    search_paths.append(path)
-                    break
-
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix:
         search_paths.append(os.path.join(conda_prefix, "lib", "libstdc++.so.6"))
-    if libstdcpp_name:
-        search_paths.append(libstdcpp_name)
+    search_paths.append(libstdcpp_name)
     search_paths.append("/usr/lib/x86_64-linux-gnu/libstdc++.so.6")
     search_paths.append("/lib/x86_64-linux-gnu/libstdc++.so.6")
-
-    seen = set()
     for candidate in search_paths:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
         if not os.path.exists(candidate):
             continue
         result = subprocess.run(
@@ -87,10 +54,6 @@ def _validate_runtime_or_exit():
         return
     message = (
         "Unsupported C++ runtime detected: missing CXXABI_1.3.15 in libstdc++.so.6.\n"
-        "If your conda lib has this symbol but imports still fail, your process is likely loading /lib/.../libstdc++.so.6.\n"
-        "Activate the environment and retry, or run:\n"
-        "  export LD_LIBRARY_PATH=\"$CONDA_PREFIX/lib:${LD_LIBRARY_PATH}\"\n"
-        "before running python.\n"
         "This commonly happens with Python 3.13 + SciPy/Lightning environments.\n"
         "Fix by creating a Python 3.12 environment, or run:\n"
         "  conda install -c conda-forge 'libstdcxx-ng>=13' 'libgcc-ng>=13' scipy\n"
