@@ -26,6 +26,7 @@ def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
         return False
 
     search_paths = []
+
     override_libstdcpp = os.environ.get("PROMPTMR_LIBSTDCPP_PATH")
     if override_libstdcpp:
         search_paths.append(override_libstdcpp)
@@ -35,6 +36,7 @@ def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
     search_paths.append(libstdcpp_name)
     search_paths.append("/usr/lib/x86_64-linux-gnu/libstdc++.so.6")
     search_paths.append("/lib/x86_64-linux-gnu/libstdc++.so.6")
+
     for candidate in search_paths:
         if not os.path.exists(candidate):
             continue
@@ -57,10 +59,12 @@ def _validate_runtime_or_exit():
         return
     message = (
         "Unsupported C++ runtime detected: missing CXXABI_1.3.15 in libstdc++.so.6.\n"
+
         "If you have a newer conda libstdc++, set:\n"
         "  export PROMPTMR_LIBSTDCPP_PATH=\"$CONDA_PREFIX/lib/libstdc++.so.6\"\n"
         "  export LD_PRELOAD=\"$PROMPTMR_LIBSTDCPP_PATH\"\n"
         "then retry.\n"
+
         "This commonly happens with Python 3.13 + SciPy/Lightning environments.\n"
         "Fix by creating a Python 3.12 environment, or run:\n"
         "  conda install -c conda-forge 'libstdcxx-ng>=13' 'libgcc-ng>=13' scipy\n"

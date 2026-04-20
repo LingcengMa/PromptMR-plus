@@ -126,11 +126,13 @@ your C++ runtime is older than what SciPy needs. Use one of these fixes:
    ```bash
    conda install -c conda-forge "libstdcxx-ng>=13" "libgcc-ng>=13" scipy
    ```
+
    If Python still links to system libstdc++, force the conda runtime:
    ```bash
    export PROMPTMR_LIBSTDCPP_PATH="$CONDA_PREFIX/lib/libstdc++.so.6"
    export LD_PRELOAD="$PROMPTMR_LIBSTDCPP_PATH"
    ```
+
 3. Verify the symbol exists:
    ```bash
    strings "$CONDA_PREFIX/lib/libstdc++.so.6" | grep CXXABI_1.3.15
