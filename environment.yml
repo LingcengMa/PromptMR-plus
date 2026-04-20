@@ -18,3 +18,4 @@ dependencies:
       - runstats
       - jsonargparse[signatures]>=4.27.7
       - einops
+      - PyYAML
