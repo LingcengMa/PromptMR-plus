@@ -32,6 +32,7 @@ def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
     search_paths.append(libstdcpp_name)
     search_paths.append("/usr/lib/x86_64-linux-gnu/libstdc++.so.6")
     search_paths.append("/lib/x86_64-linux-gnu/libstdc++.so.6")
+
     for candidate in search_paths:
         if not os.path.exists(candidate):
             continue
