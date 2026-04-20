@@ -103,10 +103,40 @@ uv venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
+
+> **Environment note:** The training stack is validated on **Python 3.10-3.12**. Python 3.13 can fail at import time in `scipy/lightning` with errors like `CXXABI_1.3.15 not found`.
+
 Then run the demo script:
 ```bash
 python demo_model.py
 ```
+
+### Troubleshooting: `CXXABI_1.3.15 not found`
+
+If you hit:
+
+```text
+ImportError: ... libstdc++.so.6: version `CXXABI_1.3.15' not found
+```
+
+your C++ runtime is older than what SciPy needs. Use one of these fixes:
+
+1. **Recommended:** create a fresh Python 3.12 env and reinstall dependencies.
+2. **Conda users:** update runtime libraries in the env:
+   ```bash
+   conda install -c conda-forge "libstdcxx-ng>=13" "libgcc-ng>=13" scipy
+   ```
+   If Python still links to system libstdc++, force the conda runtime:
+   ```bash
+   export PROMPTMR_LIBSTDCPP_PATH="$CONDA_PREFIX/lib/libstdc++.so.6"
+   export LD_PRELOAD="$PROMPTMR_LIBSTDCPP_PATH"
+   ```
+3. Verify the symbol exists:
+   ```bash
+   strings "$CONDA_PREFIX/lib/libstdc++.so.6" | grep CXXABI_1.3.15
+   ```
+
+For conda users, a tested starter environment is also provided in [`environment.yml`](environment.yml).
 
 ## Data Preparation
 

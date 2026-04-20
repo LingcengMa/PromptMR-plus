@@ -9,6 +9,9 @@ import pathlib
 import re
 import sys
 
+CONFLICT_MARKERS = ("<" * 7 + " ", "=" * 7, ">" * 7 + " ")
+TEXT_EXTENSIONS = {".py", ".md", ".yaml", ".yml", ".txt", ".toml", ".json", ".sh"}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -33,6 +36,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def has_merge_conflict_markers(root: pathlib.Path, exclude: re.Pattern[str]) -> bool:
+    has_conflict = False
+    for source_file in root.rglob("*"):
+        if not source_file.is_file() or source_file.suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        normalized = source_file.as_posix()
+        if exclude.search(normalized):
+            continue
+        try:
+            content = source_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Warning: cannot read {source_file}: {exc}", file=sys.stderr)
+            continue
+        if any(marker in content for marker in CONFLICT_MARKERS):
+            print(f"Merge conflict marker found: {source_file}", file=sys.stderr)
+            has_conflict = True
+    return has_conflict
+
+
 def main() -> int:
     args = parse_args()
     root = pathlib.Path(args.path).resolve()
@@ -47,7 +69,8 @@ def main() -> int:
         force=False,
         workers=0,
     )
-    return 0 if ok else 1
+    conflict_free = not has_merge_conflict_markers(root, exclude)
+    return 0 if ok and conflict_free else 1
 
 
 if __name__ == "__main__":

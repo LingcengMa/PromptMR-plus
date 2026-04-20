@@ -1,0 +1,20 @@
+name: promptmr-plus
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pytorch>=2.3
+  - scipy
+  - libstdcxx-ng>=13
+  - libgcc-ng>=13
+  - pip:
+      - lightning>=2.2
+      - wandb>=0.17
+      - h5py
+      - scikit-image
+      - runstats
+      - jsonargparse[signatures]>=4.27.7
+      - einops
