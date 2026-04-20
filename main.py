@@ -6,15 +6,45 @@ import os
 import sys
 import tempfile
 import subprocess
+import importlib.util
 from ctypes.util import find_library
 from itertools import chain
 from pathlib import Path
 from argparse import ArgumentParser
 from collections import defaultdict
 
+import numpy as np
+
+
+def _ensure_required_modules_or_exit():
+    """
+    Fail fast with actionable guidance if required runtime dependencies
+    are not installed in the active Python environment.
+    """
+    required_modules = {
+        "yaml": "PyYAML",
+        "torch": "torch",
+        "lightning": "lightning",
+    }
+    missing_packages = [
+        package_name
+        for module_name, package_name in required_modules.items()
+        if importlib.util.find_spec(module_name) is None
+    ]
+    if missing_packages:
+        missing = ", ".join(missing_packages)
+        raise SystemExit(
+            "Missing required Python package(s): "
+            f"{missing}.\n"
+            "Install project dependencies first, for example:\n"
+            "  python -m pip install -r requirements.txt\n"
+        )
+
+
+_ensure_required_modules_or_exit()
+
 import yaml
 import torch
-import numpy as np
 
 
 def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
@@ -251,16 +281,20 @@ class CustomWriter(BasePredictionWriter):
         pass
         
     def write_on_epoch_end(self, trainer, pl_module, predictions, batch_indices):
-
-        gathered = [None] * torch.distributed.get_world_size()
-        gathered_indices = [None] * torch.distributed.get_world_size()
-        torch.distributed.all_gather_object(gathered, predictions)
-        torch.distributed.all_gather_object(gathered_indices, batch_indices)
-        torch.distributed.barrier()
-        if not trainer.is_global_zero:
+        is_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
+        if is_dist:
+            gathered = [None] * torch.distributed.get_world_size()
+            gathered_indices = [None] * torch.distributed.get_world_size()
+            torch.distributed.all_gather_object(gathered, predictions)
+            torch.distributed.all_gather_object(gathered_indices, batch_indices)
+            torch.distributed.barrier()
+            if not trainer.is_global_zero:
+                return
+            predictions = sum(gathered, [])
+            batch_indices = sum(gathered_indices, [])
+        elif not trainer.is_global_zero:
             return
-        predictions = sum(gathered, [])
-        batch_indices = sum(gathered_indices, [])
+
         batch_indices = list(chain.from_iterable(batch_indices))
         outputs = defaultdict(list)
         num_slc_dict = {} # for reshape
