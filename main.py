@@ -7,6 +7,7 @@ import sys
 import tempfile
 import subprocess
 import ctypes
+from ctypes.util import find_library
 from itertools import chain
 from pathlib import Path
 from argparse import ArgumentParser
@@ -32,22 +33,50 @@ def _get_loaded_libstdcpp_path():
     return None
 
 
+def _get_libstdcpp_candidates():
+    candidates = []
+    loaded = _get_loaded_libstdcpp_path()
+    if loaded:
+        candidates.append(loaded)
+
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        candidates.append(os.path.join(conda_prefix, "lib", "libstdc++.so.6"))
+
+    libstdcpp_name = find_library("stdc++")
+    if libstdcpp_name:
+        candidates.append(libstdcpp_name)
+    candidates.extend([
+        "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "/lib/x86_64-linux-gnu/libstdc++.so.6",
+    ])
+
+    # Keep insertion order while de-duplicating.
+    deduped = []
+    seen = set()
+    for item in candidates:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def _has_cxxabi_symbol(symbol: str = "CXXABI_1.3.15") -> bool:
     """
-    Check whether the *currently loaded* libstdc++ exposes the requested CXXABI symbol.
+    Check whether an active/discoverable libstdc++ exposes the requested CXXABI symbol.
     """
-    loaded_lib = _get_loaded_libstdcpp_path()
-    if not loaded_lib:
-        return False
-
-    result = subprocess.run(
-        ["strings", loaded_lib],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0 and symbol in result.stdout:
-        return True
+    for candidate in _get_libstdcpp_candidates():
+        if os.path.isabs(candidate) and not os.path.exists(candidate):
+            continue
+        result = subprocess.run(
+            ["strings", candidate],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and symbol in result.stdout:
+            return True
     return False
 
 
