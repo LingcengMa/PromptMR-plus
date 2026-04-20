@@ -6,7 +6,6 @@ import os
 import sys
 import tempfile
 import subprocess
-import ctypes
 from ctypes.util import find_library
 from itertools import chain
 from pathlib import Path
@@ -18,27 +17,8 @@ import torch
 import numpy as np
 
 
-def _get_loaded_libstdcpp_path():
-    # NOTE: We intentionally inspect the library actually loaded by the current
-    # Python process (via /proc/self/maps), rather than checking candidate
-    # filesystem paths. This avoids false positives in mixed conda/system setups.
-    ctypes.CDLL("libstdc++.so.6")
-    with open("/proc/self/maps", "r", encoding="utf-8") as maps_file:
-        for line in maps_file:
-            if "libstdc++.so.6" not in line:
-                continue
-            parts = line.strip().split()
-            if parts and parts[-1].startswith("/"):
-                return parts[-1]
-    return None
-
-
 def _get_libstdcpp_candidates():
     candidates = []
-    loaded = _get_loaded_libstdcpp_path()
-    if loaded:
-        candidates.append(loaded)
-
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix:
         candidates.append(os.path.join(conda_prefix, "lib", "libstdc++.so.6"))
@@ -86,10 +66,8 @@ def _validate_runtime_or_exit():
     """
     if _has_cxxabi_symbol("CXXABI_1.3.15"):
         return
-    loaded_lib = _get_loaded_libstdcpp_path()
     message = (
         "Unsupported C++ runtime detected: missing CXXABI_1.3.15 in libstdc++.so.6.\n"
-        f"Loaded libstdc++: {loaded_lib}\n"
         "This commonly happens with Python 3.13 + SciPy/Lightning environments.\n"
         "Fix by creating a Python 3.12 environment, or run:\n"
         "  conda install -c conda-forge 'libstdcxx-ng>=13' 'libgcc-ng>=13' scipy\n"
