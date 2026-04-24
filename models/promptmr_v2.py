@@ -378,8 +378,9 @@ class PromptMR(nn.Module):
             else:
                 img_pred, latent, history_feat = cascade(img_pred, img_zf, latent, mask, sens_maps, history_feat)
 
-        # get central slice of rss as final output
+        # get central-slice complex image and rss magnitude as final outputs
         img_pred = torch.chunk(img_pred, self.num_adj_slices, dim=1)[self.center_slice]
+        img_pred_complex = img_pred.squeeze(1)
         sens_maps = torch.chunk(sens_maps, self.num_adj_slices, dim=1)[self.center_slice]
         img_pred = rss(complex_abs(complex_mul(img_pred, sens_maps)), dim=1)
             
@@ -390,6 +391,7 @@ class PromptMR(nn.Module):
 
         return {
             'img_pred': img_pred,
+            'img_pred_complex': img_pred_complex,
             'img_zf': img_zf,
             'sens_maps': sens_maps
         }
