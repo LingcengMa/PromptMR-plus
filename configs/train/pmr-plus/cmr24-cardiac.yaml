@@ -2,15 +2,12 @@ data:
   class_path: pl_modules.DataModule
   init_args:
     slice_dataset: data.CmrxReconSliceDataset
-    data_path: /gpfs/home/bingyx01/mridatasets/cmrxrecon2024
+    data_path: /radraid/lingcengma/data/CMRxRecon2026/TaskR1R2/TrainSet/Aorta/Center007/GE_30T_Architect/promptmr_dataset
+    train_path: /radraid/lingcengma/data/CMRxRecon2026/TaskR1R2/TrainSet/Aorta/Center007/GE_30T_Architect/promptmr_dataset/train2
+    val_path: /radraid/lingcengma/data/CMRxRecon2026/TaskR1R2/TrainSet/Aorta/Center007/GE_30T_Architect/promptmr_dataset/val
     challenge: multicoil
-    data_balancer:
-      class_path: data.BalanceSampler
-      init_args: 
-        ratio_dict: {
-          'T1map': 2, 'T2map': 6, 'cine_lax': 2, 'cine_sax': 1, 
-          'cine_lvot': 6, 'aorta_sag': 1, 'aorta_tra': 1,'tagging': 1 
-        }
+    # disable data_balancer for custom full-sample "flow" style filenames
+    data_balancer: null
     train_transform:
       class_path: data.CmrxReconDataTransform
       init_args:
@@ -20,7 +17,9 @@ data:
             num_low_frequencies: 
             - 16
             num_adj_slices: &num_adj_slices 5
-            mask_path: /gpfs/home/bingyx01/mridatasets/cmrxrecon2024/mask/mask_radial.h5
+            # force Gaussian k-t masks only (no radial mask file needed)
+            allowed_mask_types: [kt_gaussian]
+            seed: null
         uniform_resolution: null
         use_seed: false
     val_transform:
@@ -32,7 +31,8 @@ data:
             num_low_frequencies: 
             - 16
             num_adj_slices: *num_adj_slices
-            mask_path: /gpfs/home/bingyx01/mridatasets/cmrxrecon2024/mask/mask_radial.h5
+            allowed_mask_types: [kt_gaussian]
+            seed: 1234
         uniform_resolution: null
         use_seed: true
     combine_train_val: false
@@ -44,15 +44,15 @@ data:
 # dataset specific settings
 trainer:
   strategy: ddp
-  devices: 4
+  devices: 1
   num_nodes: 1
   max_epochs: 12
   logger: 
     class_path: lightning.pytorch.loggers.WandbLogger
     init_args:
-      save_dir: exp/cmr24-cardiac/pmr-plus # path to save experiment and checkpoint
-      tags: [cmr24-cardiac]
-      name: cmr24-cardiac-pmr-plus
+      save_dir: exp/cmr24-cardiac-fullsample/pmr-plus # path to save experiment and checkpoint
+      tags: [cmr24-cardiac-fullsample]
+      name: cmr24-cardiac-fullsample-pmr-plus
 model:
   class_path: pl_modules.PromptMrModule
   init_args:

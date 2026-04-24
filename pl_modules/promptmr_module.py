@@ -51,6 +51,7 @@ class PromptMrModule(MriModule):
         lr_step_size: int = 11,
         lr_gamma: float = 0.1,
         weight_decay: float = 0.01,
+        complex_l2_weight: float = 0.0,
         use_checkpoint: bool = False,
         compute_sens_per_coil: bool = False,
         **kwargs,
@@ -85,6 +86,7 @@ class PromptMrModule(MriModule):
             lr_step_size: Learning rate step size.
             lr_gamma: Learning rate gamma decay.
             weight_decay: Parameter for penalizing weights norm.
+            complex_l2_weight: Weight for optional complex-domain L2 loss term.
             use_checkpoint: Whether to use checkpointing to trade compute for GPU memory.
             compute_sens_per_coil: (bool) whether to compute sensitivity maps per coil for memory saving
         """
@@ -124,6 +126,7 @@ class PromptMrModule(MriModule):
         self.lr_step_size = lr_step_size
         self.lr_gamma = lr_gamma
         self.weight_decay = weight_decay
+        self.complex_l2_weight = complex_l2_weight
 
         self.model_version = model_version
         PromptMR = get_model_class(f"models.{model_version}")  # Dynamically get the model class
@@ -153,6 +156,25 @@ class PromptMrModule(MriModule):
 
         self.loss = SSIMLoss()
 
+    @staticmethod
+    def _center_crop_spatial_to_smallest(
+        x: torch.Tensor, y: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Center-crop two tensors to the same spatial size for real/complex layouts."""
+        x_h, x_w = (x.shape[-3], x.shape[-2]) if (x.ndim >= 3 and x.shape[-1] == 2) else (x.shape[-2], x.shape[-1])
+        y_h, y_w = (y.shape[-3], y.shape[-2]) if (y.ndim >= 3 and y.shape[-1] == 2) else (y.shape[-2], y.shape[-1])
+        crop_h, crop_w = min(x_h, y_h), min(x_w, y_w)
+
+        if x.ndim >= 3 and x.shape[-1] == 2:
+            x = transforms.complex_center_crop(x, (crop_h, crop_w))
+        else:
+            x = transforms.center_crop(x, (crop_h, crop_w))
+        if y.ndim >= 3 and y.shape[-1] == 2:
+            y = transforms.complex_center_crop(y, (crop_h, crop_w))
+        else:
+            y = transforms.center_crop(y, (crop_h, crop_w))
+        return x, y
+
     def configure_optimizers(self):
 
         optim = torch.optim.AdamW(
@@ -175,9 +197,23 @@ class PromptMrModule(MriModule):
         target, output = transforms.center_crop_to_smallest(
             batch.target, output)
 
-        loss = self.loss(
+        ssim_loss = self.loss(
             output.unsqueeze(1), target.unsqueeze(1), data_range=batch.max_value
         )
+        loss = ssim_loss
+        self.log("train_ssim_loss", ssim_loss, prog_bar=False)
+
+        if self.complex_l2_weight > 0:
+            pred_complex = output_dict.get("img_pred_complex", None)
+            target_complex = batch.target
+            if pred_complex is not None and target_complex.ndim >= 3 and target_complex.shape[-1] == 2:
+                target_complex, pred_complex = self._center_crop_spatial_to_smallest(target_complex, pred_complex)
+                complex_l2_loss = F.mse_loss(pred_complex, target_complex)
+                loss = loss + self.complex_l2_weight * complex_l2_loss
+                self.log("train_complex_l2_loss", complex_l2_loss, prog_bar=False)
+            else:
+                self.log("train_complex_l2_loss", torch.tensor(0.0, device=loss.device), prog_bar=False)
+
         self.log("train_loss", loss, prog_bar=True)
 
         ##! raise error if loss is nan
@@ -186,10 +222,15 @@ class PromptMrModule(MriModule):
         return loss
 
     def on_after_backward(self):
-        if self.global_step % self.trainer.log_every_n_steps ==0:
-            grad_norm = torch.nn.utils.get_total_norm(
-                [p.grad for p in self.promptmr.parameters() if p.grad is not None]
-            )
+        if self.global_step % self.trainer.log_every_n_steps == 0:
+            grads = [p.grad.detach() for p in self.promptmr.parameters() if p.grad is not None]
+            if grads:
+                grad_norm = torch.linalg.vector_norm(
+                    torch.stack([torch.linalg.vector_norm(g, ord=2) for g in grads]),
+                    ord=2,
+                )
+            else:
+                grad_norm = torch.tensor(0.0, device=self.device)
             self.log("grad_norm", grad_norm)
 
     def validation_step(self, batch, batch_idx):
@@ -202,9 +243,17 @@ class PromptMrModule(MriModule):
             batch.target, output)
         _, img_zf = transforms.center_crop_to_smallest(
             batch.target, img_zf)
-        val_loss = self.loss(
+        val_ssim_loss = self.loss(
                 output.unsqueeze(1), target.unsqueeze(1), data_range=batch.max_value
             )
+        val_loss = val_ssim_loss
+        if self.complex_l2_weight > 0:
+            pred_complex = output_dict.get("img_pred_complex", None)
+            target_complex = batch.target
+            if pred_complex is not None and target_complex.ndim >= 3 and target_complex.shape[-1] == 2:
+                target_complex, pred_complex = self._center_crop_spatial_to_smallest(target_complex, pred_complex)
+                val_complex_l2_loss = F.mse_loss(pred_complex, target_complex)
+                val_loss = val_loss + self.complex_l2_weight * val_complex_l2_loss
         cc = batch.masked_kspace.shape[1]
         centered_coil_ksp_visual = torch.log10(1e-10+torch.view_as_complex(batch.masked_kspace[:,cc//2]).abs())
         centered_sens_maps_visual = output_dict['sens_maps'][:,cc//self.num_adj_slices//2].abs()
@@ -218,6 +267,7 @@ class PromptMrModule(MriModule):
             "sens_maps": centered_sens_maps_visual,
             "output": output,
             "target": target,
+            "loss_ssim": val_ssim_loss,
             "loss": val_loss,
         }
 
