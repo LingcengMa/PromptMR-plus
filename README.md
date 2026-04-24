@@ -150,6 +150,58 @@ python main.py fit \
 
 Training on fastmri-knee requires at least 17G GPU memory if set `use_checkpoint` and `compute_sens_per_coil` in config file.
 
+### W&B prompt in non-interactive environments
+
+If training pauses with:
+
+```text
+wandb: Enter your choice:
+```
+
+run with one of the following:
+
+1. Disable W&B logging from CLI:
+   ```bash
+   python main.py fit \
+       --config configs/base.yaml \
+       --config configs/model/pmr-plus.yaml \
+       --config configs/train/pmr-plus/fm-knee.yaml \
+       --trainer.logger=false
+   ```
+2. Keep W&B but avoid login prompts by running offline:
+   ```bash
+   WANDB_MODE=offline python main.py fit \
+       --config configs/base.yaml \
+       --config configs/model/pmr-plus.yaml \
+       --config configs/train/pmr-plus/fm-knee.yaml
+   ```
+3. Use online W&B logging:
+   ```bash
+   wandb login
+   ```
+   and then rerun training.
+
+### Force only `kt_gaussian` during training
+
+`CmrxRecon24MaskFunc` supports `allowed_mask_types`. To train with only gaussian k-t masks, set:
+
+```yaml
+data:
+  init_args:
+    train_transform:
+      init_args:
+        mask_func:
+          init_args:
+            allowed_mask_types: [kt_gaussian]
+    val_transform:
+      init_args:
+        mask_func:
+          init_args:
+            allowed_mask_types: [kt_gaussian]
+```
+
+You can add this under both transform `mask_func.init_args` blocks in your CMRxRecon training config.
+
 ## Test
 
 For exmaple, run inference of PromptMR+ on fastmri-knee dataset
