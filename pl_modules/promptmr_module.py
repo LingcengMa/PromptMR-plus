@@ -222,10 +222,15 @@ class PromptMrModule(MriModule):
         return loss
 
     def on_after_backward(self):
-        if self.global_step % self.trainer.log_every_n_steps ==0:
-            grad_norm = torch.nn.utils.get_total_norm(
-                [p.grad for p in self.promptmr.parameters() if p.grad is not None]
-            )
+        if self.global_step % self.trainer.log_every_n_steps == 0:
+            grads = [p.grad.detach() for p in self.promptmr.parameters() if p.grad is not None]
+            if grads:
+                grad_norm = torch.linalg.vector_norm(
+                    torch.stack([torch.linalg.vector_norm(g, ord=2) for g in grads]),
+                    ord=2,
+                )
+            else:
+                grad_norm = torch.tensor(0.0, device=self.device)
             self.log("grad_norm", grad_norm)
 
     def validation_step(self, batch, batch_idx):
