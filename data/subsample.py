@@ -649,6 +649,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
         mask_path: Optional[str] = None,
+        allowed_mask_types: Optional[Sequence[str]] = None,
         seed: Optional[int] = None,
     ):
         """
@@ -673,13 +674,25 @@ class CmrxRecon24MaskFunc(MaskFunc):
         self.radial_mask_bank = self._load_masks(mask_path, required=False)
 
         # mask_dict is set according to cmrxrecon24 challenge settings
-        self.mask_dict = {
+        full_mask_dict = {
             "uniform": [4, 8, 10],
             "kt_uniform": [4, 8, 12, 16, 20, 24],
             "kt_random": [4, 8, 12, 16, 20, 24],
             "kt_gaussian": [4, 8, 12, 16, 20, 24],
             "kt_radial": [4, 8, 12, 16, 20, 24],
         }
+        if allowed_mask_types is None:
+            self.mask_dict = full_mask_dict
+        else:
+            invalid_types = sorted(set(allowed_mask_types) - set(full_mask_dict.keys()))
+            if invalid_types:
+                raise ValueError(
+                    f"`allowed_mask_types` contains unsupported mask types: {invalid_types}. "
+                    f"Supported mask types: {sorted(full_mask_dict.keys())}."
+                )
+            self.mask_dict = {mask_type: full_mask_dict[mask_type] for mask_type in allowed_mask_types}
+            if not self.mask_dict:
+                raise ValueError("`allowed_mask_types` cannot be empty.")
         self.masks_pool = list(self.mask_dict.keys())
 
         self._warned_generated_radial = False
@@ -929,6 +942,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
         mask_path: Optional[str] = None,
+        allowed_mask_types: Optional[Sequence[str]] = None,
         seed: Optional[int] = None,
         test_mask_type: str = 'uniform',
         test_acc: int = 10
@@ -943,6 +957,13 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
 
         # mask_dict is set according to test config
         self.mask_dict = {test_mask_type: [test_acc]}
+        if allowed_mask_types is not None:
+            invalid_types = sorted(set(allowed_mask_types) - set(self.mask_dict.keys()))
+            if invalid_types:
+                raise ValueError(
+                    f"`allowed_mask_types` contains unsupported mask types for test/val: {invalid_types}. "
+                    f"Supported mask types in this configuration: {sorted(self.mask_dict.keys())}."
+                )
         self.masks_pool = list(self.mask_dict.keys())
 
         self._warned_generated_radial = False
