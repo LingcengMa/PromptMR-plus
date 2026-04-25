@@ -88,6 +88,8 @@ class DataModule(L.LightningDataModule):
         challenge: str,
         train_transform: Callable,
         val_transform: Callable,
+        train_path: Optional[Path] = None,
+        val_path: Optional[Path] = None,
         combine_train_val: bool = False,
         sample_rate: Optional[float] = None,
         val_sample_rate: Optional[float] = None,
@@ -111,6 +113,8 @@ class DataModule(L.LightningDataModule):
 
         self.slice_dataset = resolve_class(slice_dataset)
         self.data_path = data_path
+        self.train_path = Path(train_path) if train_path is not None else None
+        self.val_path = Path(val_path) if val_path is not None else None
         self.challenge = challenge
         self.train_transform = train_transform
         self.val_transform = val_transform
@@ -189,7 +193,12 @@ class DataModule(L.LightningDataModule):
                 num_adj_slices = self.num_adj_slices,
             )
         else:
-            data_path = self.data_path / f"{prefix}{data_partition}"
+            if data_partition == "train" and self.train_path is not None:
+                data_path = self.train_path
+            elif data_partition == "val" and self.val_path is not None:
+                data_path = self.val_path
+            else:
+                data_path = self.data_path / f"{prefix}{data_partition}"
 
             dataset = slice_dataset(
                 root=data_path,
@@ -363,8 +372,5 @@ class InferenceDataModule(L.LightningDataModule):
 
     def predict_dataloader(self):
         return self._create_data_loader(self.slice_dataset, self.test_transform, data_path=self.data_path)
-
-
-
 
 

@@ -24,6 +24,7 @@ model:
     use_sens_adj: false
     lr_gamma: 0.1
     weight_decay: 1e-2
+    complex_l2_weight: 0.0
     use_checkpoint: false
 
 # add model tags to wandb

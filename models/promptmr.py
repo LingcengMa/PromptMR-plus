@@ -373,18 +373,20 @@ class PromptMR(nn.Module):
                 # adaptive input. buffer: A^H*A*x_i, s_i, x0, A^H*A*x_i-x0
                 buffer = torch.cat([ffx] + [latent]*(self.n_buffer-3) + [img_zf, ffx-img_zf], dim=1)
                 
-        # get central slice of rss as final output
+        # get central-slice complex image and rss magnitude as final outputs
         kspace_pred = torch.chunk(kspace_pred, self.num_adj_slices, dim=1)[self.center_slice]
+        sens_maps = torch.chunk(sens_maps, self.num_adj_slices, dim=1)[self.center_slice]
+        img_pred_complex = sens_reduce(kspace_pred, sens_maps, num_adj_slices=1).squeeze(1)
         img_pred = rss(complex_abs(ifft2c(kspace_pred)), dim=1)
         
         # prepare for additional output
         img_zf = torch.chunk(masked_kspace, self.num_adj_slices, dim=1)[self.center_slice]
         img_zf = rss(complex_abs(ifft2c(img_zf)), dim=1)
-        sens_maps = torch.chunk(sens_maps, self.num_adj_slices, dim=1)[self.center_slice]
         sens_maps = torch.view_as_complex(sens_maps)
 
         return {
             'img_pred': img_pred,
+            'img_pred_complex': img_pred_complex,
             'img_zf': img_zf,
             'sens_maps': sens_maps
         }

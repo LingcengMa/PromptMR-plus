@@ -212,7 +212,7 @@ class KspaceACSExtractor:
                  ) -> torch.Tensor:
         if self.mask_center:
             mask_type = mask_type[0] # assume the same type in a batch
-            mask_type = 'cartesian' if mask_type in ['uniform', 'kt_uniform', 'kt_random'] else mask_type
+            mask_type = 'cartesian' if mask_type in ['uniform', 'kt_uniform', 'kt_random', 'kt_gaussian'] else mask_type
             if mask_type == 'kt_radial':  # cmrxrecon24 pseudo radial
                 mask_low = torch.zeros_like(mask)
                 b, adj_nc, h, w, two = mask.shape

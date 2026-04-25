@@ -649,6 +649,7 @@ class CmrxRecon24MaskFunc(MaskFunc):
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
         mask_path: Optional[str] = None,
+        allowed_mask_types: Optional[Sequence[str]] = None,
         seed: Optional[int] = None,
     ):
         """
@@ -670,16 +671,29 @@ class CmrxRecon24MaskFunc(MaskFunc):
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 10], allow_any_combination=True, seed=seed)
         self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [4, 8, 12, 16, 20, 24], allow_any_combination=True, seed=seed)
         self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [4, 8, 12, 16, 20, 24], allow_any_combination=True, seed=seed)
-        self.radial_mask_bank = self._load_masks(mask_path, required=False)
 
         # mask_dict is set according to cmrxrecon24 challenge settings
-        self.mask_dict = {
+        full_mask_dict = {
             "uniform": [4, 8, 10],
             "kt_uniform": [4, 8, 12, 16, 20, 24],
             "kt_random": [4, 8, 12, 16, 20, 24],
+            "kt_gaussian": [4, 8, 12, 16, 20, 24],
             "kt_radial": [4, 8, 12, 16, 20, 24],
         }
+        if allowed_mask_types is None:
+            self.mask_dict = full_mask_dict
+        else:
+            invalid_types = sorted(set(allowed_mask_types) - set(full_mask_dict.keys()))
+            if invalid_types:
+                raise ValueError(
+                    f"`allowed_mask_types` contains unsupported mask types: {invalid_types}. "
+                    f"Supported mask types: {sorted(full_mask_dict.keys())}."
+                )
+            self.mask_dict = {mask_type: full_mask_dict[mask_type] for mask_type in allowed_mask_types}
+            if not self.mask_dict:
+                raise ValueError("`allowed_mask_types` cannot be empty.")
         self.masks_pool = list(self.mask_dict.keys())
+        self.radial_mask_bank = self._load_masks(mask_path, required=False) if "kt_radial" in self.masks_pool else {}
 
         self._warned_generated_radial = False
 
@@ -737,6 +751,24 @@ class CmrxRecon24MaskFunc(MaskFunc):
             mask, num_low_frequencies = self.kt_random_mask.sample_kt_mask(
                 shape, offset, self.num_adj_slices, slice_idx, num_t, num_slc, self.rng
             )
+        elif mask_type == "kt_gaussian":
+            if num_t is None or num_slc is None:
+                raise ValueError(
+                    "`num_t` and `num_slc` must be provided for `kt_gaussian` mask sampling."
+                )
+            h, w = shape[-3:-1]
+            acc = self.rng.choice(self.mask_dict[mask_type])
+            num_low_frequencies = self.rng.choice(self.num_low_frequencies)
+            mask_ = self._generate_gaussian_vd_masks(num_t=num_t, h=h, w=w, acc=acc)
+
+            if self.seed is None:  # training
+                ti = self.rng.randint(num_t)
+            else:  # validation
+                if slice_idx is None:
+                    raise ValueError("`slice_idx` must be provided when seed is set for validation sampling.")
+                ti = slice_idx // num_slc
+            select_list = self._get_ti_adj_idx_list(ti, num_t)
+            mask = mask_[select_list][..., None]
         elif mask_type == "kt_radial":
             # TODO: wrap this path in a dedicated MaskFunc like the other mask types.
             h, w = shape[-3:-1]
@@ -776,6 +808,51 @@ class CmrxRecon24MaskFunc(MaskFunc):
             raise ValueError(f"{mask_type} not supported")
 
         return mask.float(), num_low_frequencies
+
+    def _generate_gaussian_vd_masks(
+        self,
+        num_t: int,
+        h: int,
+        w: int,
+        acc: int,
+        center_keep_radius: int = 4,
+    ) -> torch.Tensor:
+        """
+        Procedurally generate variable-density Gaussian kt masks.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_gaussian mask generation.")
+
+        total_points = max(1, (h * w) // max(acc, 1))
+        sigma_x = w / 5.0
+        sigma_y = h / 5.0
+
+        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+
+        prob = np.exp(
+            -((xx - cx) ** 2) / (2 * sigma_x**2)
+            -((yy - cy) ** 2) / (2 * sigma_y**2)
+        )
+        prob = prob / prob.sum()
+        flat_prob = prob.ravel()
+        n_total = flat_prob.size
+
+        dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        center_mask = dist2 <= center_keep_radius**2
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            idx = self.rng.choice(n_total, size=min(total_points, n_total), replace=False, p=flat_prob)
+            frame = np.zeros(n_total, dtype=np.float32)
+            frame[idx] = 1.0
+            frame = frame.reshape(h, w)
+            frame[center_mask] = 1.0
+            masks[t] = frame
+
+        return torch.from_numpy(masks)
 
     def _generate_pseudo_radial_masks(self, num_t: int, h: int, w: int, acc: int) -> torch.Tensor:
         """
@@ -865,6 +942,7 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         num_low_frequencies: Sequence[int],
         num_adj_slices: int,
         mask_path: Optional[str] = None,
+        allowed_mask_types: Optional[Sequence[str]] = None,
         seed: Optional[int] = None,
         test_mask_type: str = 'uniform',
         test_acc: int = 10
@@ -875,11 +953,18 @@ class CmrxRecon24TestValMaskFunc(CmrxRecon24MaskFunc):
         self.uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.kt_uniform_mask = FixedLowEquiSpacedMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
         self.kt_random_mask = FixedLowRandomMaskFunc(num_low_frequencies, [test_acc], allow_any_combination=True, seed=seed)
-        self.radial_mask_bank = self._load_masks(mask_path, required=False)
 
         # mask_dict is set according to test config
         self.mask_dict = {test_mask_type: [test_acc]}
+        if allowed_mask_types is not None:
+            invalid_types = sorted(set(allowed_mask_types) - set(self.mask_dict.keys()))
+            if invalid_types:
+                raise ValueError(
+                    f"`allowed_mask_types` contains unsupported mask types for test/val: {invalid_types}. "
+                    f"Supported mask types in this configuration: {sorted(self.mask_dict.keys())}."
+                )
         self.masks_pool = list(self.mask_dict.keys())
+        self.radial_mask_bank = self._load_masks(mask_path, required=False) if "kt_radial" in self.masks_pool else {}
 
         self._warned_generated_radial = False
 
