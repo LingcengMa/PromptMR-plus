@@ -854,6 +854,231 @@ class CmrxRecon24MaskFunc(MaskFunc):
 
         return torch.from_numpy(masks)
 
+    def _generate_gaussian_vd_masks(
+        self,
+        num_t: int,
+        h: int,
+        w: int,
+        acc: int,
+        center_keep_radius: int = 4,
+    ) -> torch.Tensor:
+        """
+        Procedurally generate variable-density Gaussian kt masks.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_gaussian mask generation.")
+
+        total_points = max(1, (h * w) // max(acc, 1))
+        sigma_x = w / 5.0
+        sigma_y = h / 5.0
+
+        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+
+        prob = np.exp(
+            -((xx - cx) ** 2) / (2 * sigma_x**2)
+            -((yy - cy) ** 2) / (2 * sigma_y**2)
+        )
+        prob = prob / prob.sum()
+        flat_prob = prob.ravel()
+        n_total = flat_prob.size
+
+        dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        center_mask = dist2 <= center_keep_radius**2
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            idx = self.rng.choice(n_total, size=min(total_points, n_total), replace=False, p=flat_prob)
+            frame = np.zeros(n_total, dtype=np.float32)
+            frame[idx] = 1.0
+            frame = frame.reshape(h, w)
+            frame[center_mask] = 1.0
+            masks[t] = frame
+
+        return torch.from_numpy(masks)
+
+    def _generate_gaussian_vd_masks(
+        self,
+        num_t: int,
+        h: int,
+        w: int,
+        acc: int,
+        center_keep_radius: int = 4,
+    ) -> torch.Tensor:
+        """
+        Procedurally generate variable-density Gaussian kt masks.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_gaussian mask generation.")
+
+        total_points = max(1, (h * w) // max(acc, 1))
+        sigma_x = w / 5.0
+        sigma_y = h / 5.0
+
+        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+
+        prob = np.exp(
+            -((xx - cx) ** 2) / (2 * sigma_x**2)
+            -((yy - cy) ** 2) / (2 * sigma_y**2)
+        )
+        prob = prob / prob.sum()
+        flat_prob = prob.ravel()
+        n_total = flat_prob.size
+
+        dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        center_mask = dist2 <= center_keep_radius**2
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            idx = self.rng.choice(n_total, size=min(total_points, n_total), replace=False, p=flat_prob)
+            frame = np.zeros(n_total, dtype=np.float32)
+            frame[idx] = 1.0
+            frame = frame.reshape(h, w)
+            frame[center_mask] = 1.0
+            masks[t] = frame
+
+        return torch.from_numpy(masks)
+
+    def _generate_gaussian_vd_masks(
+        self,
+        num_t: int,
+        h: int,
+        w: int,
+        acc: int,
+        center_keep_radius: int = 4,
+    ) -> torch.Tensor:
+        """
+        Procedurally generate variable-density Gaussian kt masks.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_gaussian mask generation.")
+
+        total_points = max(1, (h * w) // max(acc, 1))
+        sigma_x = w / 5.0
+        sigma_y = h / 5.0
+
+        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+
+        prob = np.exp(
+            -((xx - cx) ** 2) / (2 * sigma_x**2)
+            -((yy - cy) ** 2) / (2 * sigma_y**2)
+        )
+        prob = prob / prob.sum()
+        flat_prob = prob.ravel()
+        n_total = flat_prob.size
+
+        dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        center_mask = dist2 <= center_keep_radius**2
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            idx = self.rng.choice(n_total, size=min(total_points, n_total), replace=False, p=flat_prob)
+            frame = np.zeros(n_total, dtype=np.float32)
+            frame[idx] = 1.0
+            frame = frame.reshape(h, w)
+            frame[center_mask] = 1.0
+            masks[t] = frame
+
+        return torch.from_numpy(masks)
+
+    def _generate_gaussian_vd_masks(
+        self,
+        num_t: int,
+        h: int,
+        w: int,
+        acc: int,
+        center_keep_radius: int = 4,
+    ) -> torch.Tensor:
+        """
+        Procedurally generate variable-density Gaussian kt masks.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_gaussian mask generation.")
+
+        total_points = max(1, (h * w) // max(acc, 1))
+        sigma_x = w / 5.0
+        sigma_y = h / 5.0
+
+        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+
+        prob = np.exp(
+            -((xx - cx) ** 2) / (2 * sigma_x**2)
+            -((yy - cy) ** 2) / (2 * sigma_y**2)
+        )
+        prob = prob / prob.sum()
+        flat_prob = prob.ravel()
+        n_total = flat_prob.size
+
+        dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        center_mask = dist2 <= center_keep_radius**2
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            idx = self.rng.choice(n_total, size=min(total_points, n_total), replace=False, p=flat_prob)
+            frame = np.zeros(n_total, dtype=np.float32)
+            frame[idx] = 1.0
+            frame = frame.reshape(h, w)
+            frame[center_mask] = 1.0
+            masks[t] = frame
+
+        return torch.from_numpy(masks)
+
+    def _generate_gaussian_vd_masks(
+        self,
+        num_t: int,
+        h: int,
+        w: int,
+        acc: int,
+        center_keep_radius: int = 4,
+    ) -> torch.Tensor:
+        """
+        Procedurally generate variable-density Gaussian kt masks.
+        Output shape: [num_t, h, w].
+        """
+        if num_t is None:
+            raise ValueError("`num_t` is required for kt_gaussian mask generation.")
+
+        total_points = max(1, (h * w) // max(acc, 1))
+        sigma_x = w / 5.0
+        sigma_y = h / 5.0
+
+        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+
+        prob = np.exp(
+            -((xx - cx) ** 2) / (2 * sigma_x**2)
+            -((yy - cy) ** 2) / (2 * sigma_y**2)
+        )
+        prob = prob / prob.sum()
+        flat_prob = prob.ravel()
+        n_total = flat_prob.size
+
+        dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        center_mask = dist2 <= center_keep_radius**2
+
+        masks = np.zeros((num_t, h, w), dtype=np.float32)
+        for t in range(num_t):
+            idx = self.rng.choice(n_total, size=min(total_points, n_total), replace=False, p=flat_prob)
+            frame = np.zeros(n_total, dtype=np.float32)
+            frame[idx] = 1.0
+            frame = frame.reshape(h, w)
+            frame[center_mask] = 1.0
+            masks[t] = frame
+
+        return torch.from_numpy(masks)
+
     def _generate_pseudo_radial_masks(self, num_t: int, h: int, w: int, acc: int) -> torch.Tensor:
         """
         Procedurally generate pseudo-radial masks when precomputed masks are unavailable.
